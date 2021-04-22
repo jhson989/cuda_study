@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <sys/time.h>
 
 #define cudaErrChk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -58,7 +59,8 @@ __global__ void vectorAdd (const float *A, const float *B, float *C, int length)
 int main(void) {
 
     /*** Configuration ***/
-    const int length = pow(2, 20);
+    const int length = pow(2, 24);
+    struct timeval stime, etime;
     printf("[Vec addiotion of %d elements]\n", length);
 
     /*** Host memory ***/
@@ -74,11 +76,14 @@ int main(void) {
 
 
     /*** Launch kernel ***/
-    int numThreads = 256;
+    int numThreads = pow(2,10);
     int numBlocks = (length+numThreads-1) / numThreads;
+    gettimeofday(&stime, NULL);
     printf("CUDA kernel launched with <<%d, %d>>\n", numBlocks, numThreads);
     vectorAdd<<<numBlocks, numThreads>>> (d_A, d_B, d_C, length);
     cudaDeviceSynchronize();
+    gettimeofday(&etime, NULL);
+    printf("    Elaped time: %.4f\n", (etime.tv_sec - stime.tv_sec) + ((etime.tv_usec-stime.tv_usec)*10e-6));
     cudaErrChk( cudaGetLastError() );
 
     /*** Memcpy from device to host ***/
