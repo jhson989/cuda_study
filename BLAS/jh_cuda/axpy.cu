@@ -9,11 +9,13 @@
  ****************** Device code ************************
  ******************************************************/
 
-__global__ void axpy (const double* A, const double* B, double* C, const double alpha, const unsigned int num_elements) {
+__constant__ double d_alpha;
+
+__global__ void axpy (const double* A, const double* B, double* C, const unsigned int num_elements) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < num_elements)
-        C[idx] = alpha*A[idx]+B[idx];
+        C[idx] = d_alpha*A[idx]+B[idx];
 
 }
 
@@ -67,6 +69,9 @@ int main(int argc, char** argv) {
     unsigned int num_elements = 3e+8;
     size_t size = num_elements*sizeof(double);
     timeval stime, etime;
+    double alpha = 1.0;
+    if (argc == 2)
+        alpha = atof(argv[1]);
 
 
     /*** Mem allocation ***/
@@ -78,17 +83,14 @@ int main(int argc, char** argv) {
     cudaErrChk ( cudaMalloc ((void**)&d_A, size) );
     cudaErrChk ( cudaMalloc ((void**)&d_B, size) );
     cudaErrChk ( cudaMalloc ((void**)&d_C, size) );
+    cudaErrChk ( cudaMemcpyToSymbol (d_alpha, &alpha, sizeof(double)) );
     printf("[mem] Allocated : 3 doulbe precision vectors[%u-D]. %.2fGB for each devices [CPU, GPU]\n"
                 , num_elements, 3*(double)size/1024/1024/1024);
 
 
     /*** Program init ***/
-    double alpha = 1.0;
-    if (argc == 2)
-        alpha = atof(argv[1]);
     h_init_value (h_A, num_elements);
     h_init_value (h_B, num_elements);
-
     cudaErrChk ( cudaMemcpy (d_A, h_A, size, cudaMemcpyHostToDevice) );
     cudaErrChk ( cudaMemcpy (d_B, h_B, size, cudaMemcpyHostToDevice) );
 
@@ -100,7 +102,7 @@ int main(int argc, char** argv) {
     printf("[kernel] <%u, %u>-size grid launched\n"
                 , num_blocks, num_threads);
     gettimeofday(&stime, NULL);
-    axpy<<<num_blocks, num_threads>>>(d_A, d_B, d_C, alpha, num_elements);
+    axpy<<<num_blocks, num_threads>>>(d_A, d_B, d_C, num_elements);
     cudaErrChk ( cudaDeviceSynchronize () )
     cudaErrChk ( cudaGetLastError () ); 
     gettimeofday(&etime, NULL);
