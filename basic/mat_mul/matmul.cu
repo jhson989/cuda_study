@@ -3,13 +3,14 @@
 #include <cstdlib>
 #include <random>
 #include <sys/time.h>
+#include "kernel.hpp"
 
-void matmul_serial(const float *A, const float *B, float *C, const int len) {
+#define cudaErrChk(ans) { cudaAssert((ans), __FILE__, __LINE__); }
 
 
+void matmul_serial (const float *A, const float *B, float *C, const int len) {
     printf("[CPU] Kernel Start..\n");
-    float gops = 1.0*len*len*len*1e-9;
-    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
+    
 
     timeval st, ed;
     gettimeofday(&st, NULL);
@@ -25,10 +26,58 @@ void matmul_serial(const float *A, const float *B, float *C, const int len) {
     }
     // End of main body
     gettimeofday(&ed, NULL);
+
     float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
+    float gops = 1.0*len*len*len*1e-9;
+    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
     printf("    Elaped time: %.4f\n", time);
     printf("    GFLOPS : %.4f\n", gops/time); 
 
+
+}
+
+
+void matmul_cuda_basic (const float *A, const float *B, float *C, const int len) {
+
+    /***
+      CUDA implementataion without any optimization methods
+      **/
+
+    /*** Memcpy H to D ***/
+    float *d_A, *d_B, *d_C;
+    cudaErrChk (cudaMalloc ((void **)&d_A, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_B, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_C, sizeof(float)*len*len));
+    cudaErrChk (cudaMemcpy (d_A, A, sizeof(float)*len*len, cudaMemcpyDeviceToHost);
+    cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyDeviceToHost);
+    
+
+
+
+    printf("[GPU] Kernel Start..\n");
+    
+
+    timeval st, ed;
+    gettimeofday(&st, NULL);
+    // Main body
+    int num_threads = 1024;
+    int num_blocks = (len*len+(num_threads-1))/num_threads
+    matmul_basic<<<num_blocks, num_threads>>>(d_A, d_B, d_C, len);
+    // End of main body
+    gettimeofday(&ed, NULL);
+
+    float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
+    float gops = 1.0*len*len*len*1e-9;
+    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
+    printf("    Elaped time: %.4f\n", time);
+    printf("    GFLOPS : %.4f\n", gops/time); 
+
+
+    cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost);
+    cudaErrChk (cudaDeviceSynchronize ())
+    cudaErrChk (cudaFree (d_A));
+    cudaErrChk (cudaFree (d_B));
+    cudaErrChk (cudaFree (d_C));
 
 }
 
@@ -43,6 +92,15 @@ void h_initialize(float *mem, const int len) {
             mem[i*len+j] = (float)(rand()%1000);
         }
     }
+}
+
+inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"CUDA assert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
 }
 
 bool h_test(const float *A, const float *B, const float *C, const int len) {
