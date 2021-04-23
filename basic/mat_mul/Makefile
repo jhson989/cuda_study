@@ -1,19 +1,15 @@
 CC = /usr/local/cuda/bin/nvcc
 PROGS = matmul
-OBJS = kernel.o
+OBJS = kernel.cu
+INC = kernel.hpp
 
 all: ${PROGS}
 
-
-%.o: %.cu
-	${CC} -c -o $@ $<
-
-
-%: %.cu
+%: %.cu ${OBJS} ${INC} Makefile
 	${CC} -o $@ ${OBJS} $<
 
 
 clean :
-	rm ${PROGS} ${OBJS}
+	rm ${PROGS}
 
 

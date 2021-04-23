@@ -6,7 +6,14 @@
 #include "kernel.hpp"
 
 #define cudaErrChk(ans) { cudaAssert((ans), __FILE__, __LINE__); }
-
+inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"CUDA assert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
 
 void matmul_serial (const float *A, const float *B, float *C, const int len) {
     printf("[CPU] Kernel Start..\n");
@@ -42,27 +49,27 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     /***
       CUDA implementataion without any optimization methods
       **/
+    int num_threads = 128;
+    int num_blocks = (len*len+(num_threads-1))/num_threads;
+    printf("[GPU] Kernel Start..\n");
+    printf("    Grid size: [%d, %d]\n", num_blocks, num_threads);
+
 
     /*** Memcpy H to D ***/
     float *d_A, *d_B, *d_C;
     cudaErrChk (cudaMalloc ((void **)&d_A, sizeof(float)*len*len));
     cudaErrChk (cudaMalloc ((void **)&d_B, sizeof(float)*len*len));
     cudaErrChk (cudaMalloc ((void **)&d_C, sizeof(float)*len*len));
-    cudaErrChk (cudaMemcpy (d_A, A, sizeof(float)*len*len, cudaMemcpyDeviceToHost);
-    cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyDeviceToHost);
-    
-
-
-
-    printf("[GPU] Kernel Start..\n");
+    cudaErrChk (cudaMemcpy (d_A, A, sizeof(float)*len*len, cudaMemcpyHostToDevice));
+    cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
     
 
     timeval st, ed;
     gettimeofday(&st, NULL);
     // Main body
-    int num_threads = 1024;
-    int num_blocks = (len*len+(num_threads-1))/num_threads
     matmul_basic<<<num_blocks, num_threads>>>(d_A, d_B, d_C, len);
+    cudaErrChk (cudaDeviceSynchronize ())
+    cudaErrChk( cudaGetLastError() );
     // End of main body
     gettimeofday(&ed, NULL);
 
@@ -72,8 +79,7 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     printf("    Elaped time: %.4f\n", time);
     printf("    GFLOPS : %.4f\n", gops/time); 
 
-
-    cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost);
+    cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
     cudaErrChk (cudaFree (d_A));
     cudaErrChk (cudaFree (d_B));
@@ -94,14 +100,7 @@ void h_initialize(float *mem, const int len) {
     }
 }
 
-inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-   if (code != cudaSuccess) 
-   {
-      fprintf(stderr,"CUDA assert: %s %s %d\n", cudaGetErrorString(code), file, line);
-      if (abort) exit(code);
-   }
-}
+
 
 bool h_test(const float *A, const float *B, const float *C, const int len) {
 
@@ -126,10 +125,11 @@ int main(int argc, char** argv) {
     /*** Program configuration ***/
     printf("\n============================================\n");
     printf("Matrix multiplication\n");
-    printf("A * B = C\n");
+    printf("    A * B = C\n");
+    printf("    arg : ./matmul [len] [Test:0,1]\n");
     printf("============================================\n\n");
     int len = (int)1e+3;
-    if (argc == 2) 
+    if (argc >= 2) 
         len = atoi(argv[1]);
 
     /*** Data initialize ***/
@@ -143,15 +143,19 @@ int main(int argc, char** argv) {
 
 
     /*** Run a matmul ***/
-    matmul_serial (A, B, C, len);
+    //matmul_serial (A, B, C, len);
+    matmul_cuda_basic (A, B, C, len);
 
     /*** Test the result ***/
-    if (h_test (A, B, C, len) == true) {
-        printf("Test passed\n");
+    if (argc == 3 && atoi(argv[2]) == 0) {
+        printf("[TEST] Test skipped..\n");
     } else {
-        printf("[ERR] Test failed!!\n");
+        if (h_test (A, B, C, len) == true) {
+            printf("    Test passed\n");
+        } else {
+            printf("    [ERR] Test failed!!\n");
+        }
     }
-
     /*** Finalize ***/
     free (A);
     free (B);
