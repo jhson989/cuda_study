@@ -16,7 +16,7 @@ inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=
 }
 
 void matmul_serial (const float *A, const float *B, float *C, const int len) {
-    printf("[CPU] Kernel Start..\n");
+    printf("[CPU] Kernel start..\n");
     
 
     timeval st, ed;
@@ -49,10 +49,11 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     /***
       CUDA implementataion without any optimization methods
       **/
-    int num_threads = 128;
-    int num_blocks = (len*len+(num_threads-1))/num_threads;
-    printf("[GPU] Kernel Start..\n");
-    printf("    Grid size: [%d, %d]\n", num_blocks, num_threads);
+    const int num_threads = 32;
+    const dim3 dim_threads(num_threads, num_threads);
+    const dim3 dim_blocks((len+num_threads-1)/num_threads, (len+num_threads-1)/num_threads);
+    printf("[GPU] Basic kernel start..\n");
+    printf("    Grid size: [(%d, %d), (%d, %d)]\n", dim_blocks.y, dim_blocks.x, dim_threads.y, dim_threads.x);
 
 
     /*** Memcpy H to D ***/
@@ -67,7 +68,7 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     timeval st, ed;
     gettimeofday(&st, NULL);
     // Main body
-    matmul_basic<<<num_blocks, num_threads>>>(d_A, d_B, d_C, len);
+    matmul_basic<<<dim_blocks, dim_threads>>>(d_A, d_B, d_C, len);
     cudaErrChk (cudaDeviceSynchronize ())
     cudaErrChk( cudaGetLastError() );
     // End of main body
@@ -86,6 +87,55 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     cudaErrChk (cudaFree (d_C));
 
 }
+
+
+
+void matmul_cuda_shared (const float *A, const float *B, float *C, const int len) {
+
+    /***
+      CUDA implementataion without any optimization methods
+      **/
+    const int len_tile = 32;
+    const dim3 dim_threads(len_tile, len_tile);
+    const dim3 dim_blocks((len+len_tile-1)/len_tile, (len+len_tile-1)/len_tile);
+    const int size_smem = 2*sizeof(float)*len_tile*len_tile;
+    printf("[GPU] Kernel with shared memory start..\n");
+    printf("    Grid size: [(%d, %d), (%d, %d)]\n", dim_blocks.y, dim_blocks.x, dim_threads.y, dim_threads.x);
+    printf("    Shared mem size: %.2fKB\n", size_smem/1024.0);
+
+
+    /*** Memcpy H to D ***/
+    float *d_A, *d_B, *d_C;
+    cudaErrChk (cudaMalloc ((void **)&d_A, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_B, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_C, sizeof(float)*len*len));
+    cudaErrChk (cudaMemcpy (d_A, A, sizeof(float)*len*len, cudaMemcpyHostToDevice));
+    cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
+    
+
+    timeval st, ed;
+    gettimeofday(&st, NULL);
+    // Main body
+    matmul_tiled<<<dim_blocks, dim_threads, size_smem>>>(d_A, d_B, d_C, len, len_tile);
+    cudaErrChk (cudaDeviceSynchronize ())
+    cudaErrChk( cudaGetLastError() );
+    // End of main body
+    gettimeofday(&ed, NULL);
+
+    float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
+    float gops = 1.0*len*len*len*1e-9;
+    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
+    printf("    Elaped time: %.4f\n", time);
+    printf("    GFLOPS : %.4f\n", gops/time); 
+
+    cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
+    cudaErrChk (cudaDeviceSynchronize ())
+    cudaErrChk (cudaFree (d_A));
+    cudaErrChk (cudaFree (d_B));
+    cudaErrChk (cudaFree (d_C));
+
+}
+
 
 
 /****************************************
@@ -112,8 +162,10 @@ bool h_test(const float *A, const float *B, const float *C, const int len) {
             for (int k=0; k<len; k++) {
                 sum += A[i*len+k]*B[k*len+j];
             }
-            if (sum != C[i*len+j])
+            if (sum != C[i*len+j]){
+                printf("C[%d][%d] = %.f != %f\n", i, j, C[i*len+j], sum);
                 return false;
+            }
         }
     }
     return true;
@@ -131,6 +183,7 @@ int main(int argc, char** argv) {
     int len = (int)1e+3;
     if (argc >= 2) 
         len = atoi(argv[1]);
+    srand(0);
 
     /*** Data initialize ***/
     float *A = (float *) malloc (len*len*sizeof(float));
@@ -145,6 +198,7 @@ int main(int argc, char** argv) {
     /*** Run a matmul ***/
     //matmul_serial (A, B, C, len);
     matmul_cuda_basic (A, B, C, len);
+    matmul_cuda_shared (A, B, C, len);
 
     /*** Test the result ***/
     if (argc == 3 && atoi(argv[2]) == 0) {

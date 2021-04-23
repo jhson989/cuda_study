@@ -6,7 +6,7 @@ INC = kernel.hpp
 all: ${PROGS}
 
 %: %.cu ${OBJS} ${INC} Makefile
-	${CC} -o $@ ${OBJS} $<
+	${CC} -O3 -o $@ ${OBJS} $<
 
 
 clean :
