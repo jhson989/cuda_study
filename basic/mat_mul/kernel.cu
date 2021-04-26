@@ -58,7 +58,7 @@ __global__ void matmul_tiled(const float* A, const float* B, float* C, const int
 __global__ void transpose(const float* A, float* A_T, const int len) {
     int i = blockIdx.y * blockDim.y + threadIdx.y;
     int j = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i>j && i<len) {
+    if (i>=j && i<len) {
         A_T[i*len+j] = A[j*len+i];
         A_T[j*len+i] = A[i*len+j];
     }

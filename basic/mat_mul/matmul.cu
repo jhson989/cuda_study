@@ -163,6 +163,7 @@ void matmul_cuda_shared_transposed (const float *A, const float *B, float *C, co
     cudaErrChk (cudaMalloc ((void **)&d_B, sizeof(float)*len*len));
     cudaErrChk (cudaMalloc ((void **)&d_C, sizeof(float)*len*len));
     cudaErrChk (cudaMemcpy (d_A, A, sizeof(float)*len*len, cudaMemcpyHostToDevice));
+    transpose<<<dim_blocks, dim_threads>>>(d_A, d_A_T, len);
     cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
     
 
@@ -170,7 +171,6 @@ void matmul_cuda_shared_transposed (const float *A, const float *B, float *C, co
     gettimeofday(&st, NULL);
     // Main body
     for (int i=0; i<loop_exe; i++) {
-        transpose<<<dim_blocks, dim_threads>>>(d_A, d_A_T, len);
         matmul_tiled_transposed<<<dim_blocks, dim_threads, size_smem>>>(d_A_T, d_B, d_C, len, len_tile);
         cudaErrChk (cudaDeviceSynchronize ())
         cudaErrChk( cudaGetLastError() );
@@ -259,7 +259,7 @@ int main(int argc, char** argv) {
     matmul_cuda_shared_transposed (A, B, C, len);
 
     /*** Test the result ***/
-    if (argc == 3 && atoi(argv[2]) == 1) {
+    if (argc >= 3 && atoi(argv[2]) == 1) {
         if (h_test (A, B, C, len) == true) {
             printf("    Test passed\n");
         } else {
