@@ -113,8 +113,10 @@ float* host_mat_mul(const float* A, const float* B, const float* C, const struct
     cudaErrChk(cudaEventRecord(stop, NULL));
     cudaErrChk(cudaEventSynchronize(stop));
     float msec_total = 0.0f;
+    float gflo = num_executions*conf.CH*conf.CW*(2.0*conf.AW+2)*1e-9;
     cudaErrChk(cudaEventElapsedTime(&msec_total, start, stop));
     printf("    Elaped time: %.4f msec\n", msec_total);
+    printf("    gFlops : %.4f gflops\n", gflo/(msec_total*1e-3));
 
     cudaErrChk (cudaMemcpy(result, d_C, size_C, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
