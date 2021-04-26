@@ -66,8 +66,12 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
     
 
-    timeval st, ed;
-    gettimeofday(&st, NULL);
+    float gops = 1.0*len*len*len*1e-9*loop_exe;
+    float msec_total = 0.0f;
+    cudaEvent_t start, stop;
+    cudaErrChk(cudaEventCreate(&start));
+    cudaErrChk(cudaEventCreate(&stop));
+    cudaErrChk(cudaEventRecord(start, NULL));
     // Main body
     for (int i=0; i<loop_exe; i++) {
         matmul_basic<<<dim_blocks, dim_threads>>>(d_A, d_B, d_C, len);
@@ -75,13 +79,14 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
         cudaErrChk( cudaGetLastError() );
     }
     // End of main body
-    gettimeofday(&ed, NULL);
+    cudaErrChk(cudaEventRecord(stop, NULL));
+    cudaErrChk(cudaEventSynchronize(stop));
+    cudaErrChk(cudaEventElapsedTime(&msec_total, start, stop));
 
-    float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
-    float gops = 1.0*len*len*len*1e-9;
-    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
-    printf("    Elaped time: %.4f\n", time);
-    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
+
+    printf("    Total number of floating point multiplications : %.2f Gops\n", gops);
+    printf("    Elaped time: %.4f msec\n", msec_total);
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops/(msec_total*1e-3), loop_exe); 
 
     cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
@@ -116,8 +121,12 @@ void matmul_cuda_shared (const float *A, const float *B, float *C, const int len
     cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
     
 
-    timeval st, ed;
-    gettimeofday(&st, NULL);
+    float gops = 1.0*len*len*len*1e-9*loop_exe;
+    float msec_total = 0.0f;
+    cudaEvent_t start, stop;
+    cudaErrChk(cudaEventCreate(&start));
+    cudaErrChk(cudaEventCreate(&stop));
+    cudaErrChk(cudaEventRecord(start, NULL));
     // Main body
     for (int i=0; i<loop_exe; i++) {
         matmul_tiled<<<dim_blocks, dim_threads, size_smem>>>(d_A, d_B, d_C, len, len_tile);
@@ -125,13 +134,13 @@ void matmul_cuda_shared (const float *A, const float *B, float *C, const int len
         cudaErrChk( cudaGetLastError() );
     }
     // End of main body
-    gettimeofday(&ed, NULL);
+    cudaErrChk(cudaEventRecord(stop, NULL));
+    cudaErrChk(cudaEventSynchronize(stop));
+    cudaErrChk(cudaEventElapsedTime(&msec_total, start, stop));
 
-    float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
-    float gops = 1.0*len*len*len*1e-9;
-    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
-    printf("    Elaped time: %.4f\n", time);
-    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
+    printf("    Total number of floating point multiplications : %.2f Gops\n", gops);
+    printf("    Elaped time: %.4f msec\n", msec_total);
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops/(msec_total*1e-3), loop_exe); 
 
     cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
@@ -167,8 +176,12 @@ void matmul_cuda_shared_transposed (const float *A, const float *B, float *C, co
     cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
     
 
-    timeval st, ed;
-    gettimeofday(&st, NULL);
+    float gops = 1.0*len*len*len*1e-9*loop_exe;
+    float msec_total = 0.0f;
+    cudaEvent_t start, stop;
+    cudaErrChk(cudaEventCreate(&start));
+    cudaErrChk(cudaEventCreate(&stop));
+    cudaErrChk(cudaEventRecord(start, NULL));
     // Main body
     for (int i=0; i<loop_exe; i++) {
         matmul_tiled_transposed<<<dim_blocks, dim_threads, size_smem>>>(d_A_T, d_B, d_C, len, len_tile);
@@ -176,13 +189,13 @@ void matmul_cuda_shared_transposed (const float *A, const float *B, float *C, co
         cudaErrChk( cudaGetLastError() );
     }
     // End of main body
-    gettimeofday(&ed, NULL);
+    cudaErrChk(cudaEventRecord(stop, NULL));
+    cudaErrChk(cudaEventSynchronize(stop));
+    cudaErrChk(cudaEventElapsedTime(&msec_total, start, stop));
 
-    float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
-    float gops = 1.0*len*len*len*1e-9;
-    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
-    printf("    Elaped time: %.4f\n", time);
-    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
+    printf("    Total number of floating point multiplications : %.2f Gops\n", gops);
+    printf("    Elaped time: %.4f msec\n", msec_total);
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops/(msec_total*1e-3), loop_exe); 
 
     cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
@@ -205,12 +218,8 @@ void h_initialize(float *mem, const int len) {
     }
 }
 
-
-
 bool h_test(const float *A, const float *B, const float *C, const int len) {
-
     printf("[TEST] Test start..\n");
-
     for (int i=0; i<len; i++) {
         for (int j=0; j<len; j++) {
             float sum = 0;
