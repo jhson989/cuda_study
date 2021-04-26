@@ -1,7 +1,7 @@
 CC = /usr/local/cuda/bin/nvcc
 PROGS = matmul
 OBJS = kernel.cu
-INC = kernel.hpp
+INC = kernel.cuh
 
 all: ${PROGS}
 

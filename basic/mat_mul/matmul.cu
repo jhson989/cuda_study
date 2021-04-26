@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <random>
 #include <sys/time.h>
-#include "kernel.hpp"
+#include "kernel.cuh"
 
 #define cudaErrChk(ans) { cudaAssert((ans), __FILE__, __LINE__); }
 inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -14,6 +14,8 @@ inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=
       if (abort) exit(code);
    }
 }
+
+int loop_exe = 1;
 
 void matmul_serial (const float *A, const float *B, float *C, const int len) {
     printf("[CPU] Kernel start..\n");
@@ -38,8 +40,7 @@ void matmul_serial (const float *A, const float *B, float *C, const int len) {
     float gops = 1.0*len*len*len*1e-9;
     printf("    Total number of floating point multiplications : %.2fGops\n", gops);
     printf("    Elaped time: %.4f\n", time);
-    printf("    GFLOPS : %.4f\n", gops/time); 
-
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
 
 }
 
@@ -49,7 +50,7 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     /***
       CUDA implementataion without any optimization methods
       **/
-    const int num_threads = 32;
+    const int num_threads = 16;
     const dim3 dim_threads(num_threads, num_threads);
     const dim3 dim_blocks((len+num_threads-1)/num_threads, (len+num_threads-1)/num_threads);
     printf("[GPU] Basic kernel start..\n");
@@ -68,9 +69,11 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     timeval st, ed;
     gettimeofday(&st, NULL);
     // Main body
-    matmul_basic<<<dim_blocks, dim_threads>>>(d_A, d_B, d_C, len);
-    cudaErrChk (cudaDeviceSynchronize ())
-    cudaErrChk( cudaGetLastError() );
+    for (int i=0; i<loop_exe; i++) {
+        matmul_basic<<<dim_blocks, dim_threads>>>(d_A, d_B, d_C, len);
+        cudaErrChk (cudaDeviceSynchronize ())
+        cudaErrChk( cudaGetLastError() );
+    }
     // End of main body
     gettimeofday(&ed, NULL);
 
@@ -78,7 +81,7 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     float gops = 1.0*len*len*len*1e-9;
     printf("    Total number of floating point multiplications : %.2fGops\n", gops);
     printf("    Elaped time: %.4f\n", time);
-    printf("    GFLOPS : %.4f\n", gops/time); 
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
 
     cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
@@ -95,7 +98,7 @@ void matmul_cuda_shared (const float *A, const float *B, float *C, const int len
     /***
       CUDA implementataion without any optimization methods
       **/
-    const int len_tile = 32;
+    const int len_tile = 16;
     const dim3 dim_threads(len_tile, len_tile);
     const dim3 dim_blocks((len+len_tile-1)/len_tile, (len+len_tile-1)/len_tile);
     const int size_smem = 2*sizeof(float)*len_tile*len_tile;
@@ -116,9 +119,11 @@ void matmul_cuda_shared (const float *A, const float *B, float *C, const int len
     timeval st, ed;
     gettimeofday(&st, NULL);
     // Main body
-    matmul_tiled<<<dim_blocks, dim_threads, size_smem>>>(d_A, d_B, d_C, len, len_tile);
-    cudaErrChk (cudaDeviceSynchronize ())
-    cudaErrChk( cudaGetLastError() );
+    for (int i=0; i<loop_exe; i++) {
+        matmul_tiled<<<dim_blocks, dim_threads, size_smem>>>(d_A, d_B, d_C, len, len_tile);
+        cudaErrChk (cudaDeviceSynchronize ())
+        cudaErrChk( cudaGetLastError() );
+    }
     // End of main body
     gettimeofday(&ed, NULL);
 
@@ -126,7 +131,7 @@ void matmul_cuda_shared (const float *A, const float *B, float *C, const int len
     float gops = 1.0*len*len*len*1e-9;
     printf("    Total number of floating point multiplications : %.2fGops\n", gops);
     printf("    Elaped time: %.4f\n", time);
-    printf("    GFLOPS : %.4f\n", gops/time); 
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
 
     cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
     cudaErrChk (cudaDeviceSynchronize ())
@@ -137,6 +142,56 @@ void matmul_cuda_shared (const float *A, const float *B, float *C, const int len
 }
 
 
+void matmul_cuda_shared_transposed (const float *A, const float *B, float *C, const int len) {
+
+    /***
+      CUDA implementataion without any optimization methods
+      **/
+    const int len_tile = 16;
+    const dim3 dim_threads(len_tile, len_tile);
+    const dim3 dim_blocks((len+len_tile-1)/len_tile, (len+len_tile-1)/len_tile);
+    const int size_smem = 2*sizeof(float)*len_tile*len_tile;
+    printf("[GPU] Kernel with shared transposed start..\n");
+    printf("    Grid size: [(%d, %d), (%d, %d)]\n", dim_blocks.y, dim_blocks.x, dim_threads.y, dim_threads.x);
+    printf("    Shared mem size: %.2fKB\n", size_smem/1024.0);
+
+
+    /*** Memcpy H to D ***/
+    float *d_A, *d_A_T, *d_B, *d_C;
+    cudaErrChk (cudaMalloc ((void **)&d_A, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_A_T, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_B, sizeof(float)*len*len));
+    cudaErrChk (cudaMalloc ((void **)&d_C, sizeof(float)*len*len));
+    cudaErrChk (cudaMemcpy (d_A, A, sizeof(float)*len*len, cudaMemcpyHostToDevice));
+    cudaErrChk (cudaMemcpy (d_B, B, sizeof(float)*len*len, cudaMemcpyHostToDevice));
+    
+
+    timeval st, ed;
+    gettimeofday(&st, NULL);
+    // Main body
+    for (int i=0; i<loop_exe; i++) {
+        transpose<<<dim_blocks, dim_threads>>>(d_A, d_A_T, len);
+        matmul_tiled_transposed<<<dim_blocks, dim_threads, size_smem>>>(d_A_T, d_B, d_C, len, len_tile);
+        cudaErrChk (cudaDeviceSynchronize ())
+        cudaErrChk( cudaGetLastError() );
+    }
+    // End of main body
+    gettimeofday(&ed, NULL);
+
+    float time = (ed.tv_sec - st.tv_sec) + ((ed.tv_usec-st.tv_usec)*1e-6);
+    float gops = 1.0*len*len*len*1e-9;
+    printf("    Total number of floating point multiplications : %.2fGops\n", gops);
+    printf("    Elaped time: %.4f\n", time);
+    printf("    GFLOPS : %.4f [Avg. of %d time(s)]\n", gops*loop_exe/time, loop_exe); 
+
+    cudaErrChk (cudaMemcpy(C, d_C, sizeof(float)*len*len, cudaMemcpyDeviceToHost));
+    cudaErrChk (cudaDeviceSynchronize ())
+    cudaErrChk (cudaFree (d_A));
+    cudaErrChk (cudaFree (d_A_T));
+    cudaErrChk (cudaFree (d_B));
+    cudaErrChk (cudaFree (d_C));
+
+}
 
 /****************************************
   ************** Host Code **************
@@ -178,11 +233,13 @@ int main(int argc, char** argv) {
     printf("\n============================================\n");
     printf("Matrix multiplication\n");
     printf("    A * B = C\n");
-    printf("    arg : ./matmul [len] [Test:0,1]\n");
+    printf("    arg : ./matmul [len] [Test:0,1] [loop_exe]\n");
     printf("============================================\n\n");
     int len = (int)1e+3;
     if (argc >= 2) 
         len = atoi(argv[1]);
+    if (argc >= 4) 
+        loop_exe = atoi(argv[3]);
     srand(0);
 
     /*** Data initialize ***/
@@ -196,20 +253,22 @@ int main(int argc, char** argv) {
 
 
     /*** Run a matmul ***/
-    //matmul_serial (A, B, C, len);
+//    matmul_serial (A, B, C, len);
     matmul_cuda_basic (A, B, C, len);
     matmul_cuda_shared (A, B, C, len);
+    matmul_cuda_shared_transposed (A, B, C, len);
 
     /*** Test the result ***/
-    if (argc == 3 && atoi(argv[2]) == 0) {
-        printf("[TEST] Test skipped..\n");
-    } else {
+    if (argc == 3 && atoi(argv[2]) == 1) {
         if (h_test (A, B, C, len) == true) {
             printf("    Test passed\n");
         } else {
             printf("    [ERR] Test failed!!\n");
         }
+    } else {
+        printf("[TEST] Test skipped..\n");
     }
+
     /*** Finalize ***/
     free (A);
     free (B);
