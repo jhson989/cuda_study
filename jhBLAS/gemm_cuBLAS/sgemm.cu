@@ -99,15 +99,14 @@ float* host_mat_mul(const float* A, const float* B, const float* C, const struct
     cublasHandle_t handle;
     cuBLASErrChk (cublasCreate (&handle));
     int m=conf.CH, n=conf.CW, k=conf.AW;
-    const float *alpha=&(conf.alpha);
-    const float *beta=&(conf.beta);
+    const float *alpha=&(conf.alpha), *beta=&(conf.beta);
     /*** Run CUDA kernel ***/
     cudaEvent_t start, stop;
     cudaErrChk(cudaEventCreate(&start));
     cudaErrChk(cudaEventCreate(&stop));
     cudaErrChk(cudaEventRecord(start, NULL));
     // Main body
-    cuBLASErrChk (cublasSgemm (handle, CUBLAS_OP_N, CUBLAS_OP_N, m, n, k, alpha, d_A, m, d_B, k, beta, d_C, m));
+    cuBLASErrChk (cublasSgemm (handle, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, alpha, d_B, n, d_A, k, beta, d_C, n));
 
     // End of main body
     cudaErrChk(cudaEventRecord(stop, NULL));
@@ -194,11 +193,11 @@ void host_test(const float *A, const float *B, const float *C, const float * res
         for (int j=0; j<conf.CW; j++) {
             float sum = 0;
             for (int k=0; k<len_k; k++) {
-                sum += A[k*conf.AH+i]*B[j*conf.BH+k];
+                sum += A[i*conf.AW+k]*B[k*conf.BW+j];
             }
-            sum = alpha*sum+beta*C[j*conf.CH+i];
-            if (sum != result[j*conf.CH+i]){
-                printf("    [ERROR] C[%d][%d] = %.f != %f\n", i, j, result[j*conf.CH+i], sum);
+            sum = alpha*sum+beta*C[i*conf.CW+j];
+            if (sum != result[i*conf.CW+j]){
+                printf("    [ERROR] C[%d][%d] = %.f != %f\n", i, j, result[i*conf.CW+j], sum);
                 printf("    Test failed...!\n");
                 return;
             }
