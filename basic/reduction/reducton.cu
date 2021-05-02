@@ -22,6 +22,16 @@ inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=
   *** Kernel program
   ********************************/
 
+
+
+
+
+
+
+/********************************
+  *** Basic reduction
+  ********************************/
+
 __global__ void reduction (DTYPE* d_data, ull remain, ull next) {
     ull idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -32,8 +42,25 @@ __global__ void reduction (DTYPE* d_data, ull remain, ull next) {
 
 
 
+const ull run_kernel_basic (DTYPE* d_data, const ull num_data) {
 
+    ull remain=num_data, next=0;
+    while (remain > 1e+3) {
+        if (remain%2==0)
+            next = remain/2;
+        else
+            next = remain/2 +1;
 
+        dim3 threads (256);
+        dim3 blocks ((next+threads.x-1)/threads.x);
+        reduction<<<blocks, threads>>> (d_data, remain, next);
+        cudaErrChk (cudaDeviceSynchronize ())
+        cudaErrChk (cudaGetLastError() );
+        remain = next;
+    }
+
+    return remain;
+}
 
 
 /********************************
@@ -75,24 +102,10 @@ int main (int argc, char** argv) {
     DTYPE* d_data;
     cudaErrChk (cudaMalloc ((void**)&d_data, size_data));
     cudaErrChk (cudaMemcpy (d_data, data, size_data, cudaMemcpyHostToDevice));
+    cudaErrChk (cudaDeviceSynchronize ())
 
     /*** Run kernel ***/
-    ull remain=num_data, next=0;
-    while (remain > 1e+3) {
-        if (remain%2==0)
-            next = remain/2;
-        else
-            next = remain/2 +1;
-
-        dim3 threads (256);
-        dim3 blocks ((next+threads.x-1)/threads.x);
-        reduction<<<blocks, threads>>> (d_data, remain, next);
-        cudaErrChk (cudaDeviceSynchronize ())
-        cudaErrChk (cudaGetLastError() );
-        remain = next;
-    }
-
-
+    const ull remain = run_kernel_basic (d_data, num_data);
 
     /*** Check result ***/
     DTYPE* result = (DTYPE*) malloc (sizeof (DTYPE)*remain);
