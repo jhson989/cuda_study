@@ -1,5 +1,5 @@
 CC = /usr/local/cuda/bin/nvcc
-PROGS = reduction_basic
+PROGS = reduction
 OBJS = 
 INC = 
 
