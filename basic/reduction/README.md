@@ -1,2 +1,2 @@
-# CUDA Reduction implementation  
+# CUDA Reduction implementation   
 
