@@ -24,23 +24,24 @@ inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=
 
 /*** Kernel program ***/
 __global__ void reduction_blocked (DTYPE* d_data, DTYPE* d_out, ull remain) {
+    ull tidx = threadIdx.x;
     ull idx = blockIdx.x * blockDim.x + threadIdx.x;
-    ull 
-    DTYPE sum = 0;
 
-    for (int s=blockDim.x>>1; s>0; s>>=1) {
-        if (idx + s < remain) {
-            d_data[out]+=d_data[out_s];
+    for (ull s=blockDim.x/2; s>0; s>>=1) {
+        if (tidx<s && idx+s < remain) {
+            d_data[idx]+=d_data[idx+s];
         }
         __syncthreads();
     }
     
-    d_out[blockIdx.x] = sum;
+    if (tidx == 0) {
+        d_out[blockIdx.x] = d_data[idx];
+    }
 }
 
 
 /*** Host program ***/
-ull run_kernel_basic (DTYPE* d_data, const ull num_data) {
+void run_kernel_blocked (DTYPE* d_data, const ull num_data) {
 
     DTYPE* d_out;
     cudaErrChk (cudaMalloc ((void**)&d_out, sizeof(DTYPE)*num_data));
@@ -48,19 +49,23 @@ ull run_kernel_basic (DTYPE* d_data, const ull num_data) {
 
     dim3 threads (256);
     while (remain > 1) {
-        next = remain/thread.x + remain%thread.x;
+        if (remain%threads.x==0)
+            next = remain/threads.x;
+        else
+            next = remain/threads.x+1;
+
 
         dim3 blocks ((remain+threads.x-1)/threads.x);
-        reduction_blocked<<<blocks, threads>>> (d_data, d_out, remain, next);
-        cudaErrChk (cudaMemcpy (d_data, d_out, next*sizeof(DYPT), cudaMemcpyDeviceToDevice));
+        reduction_blocked<<<blocks, threads>>> (d_data, d_out, remain);
+        cudaErrChk (cudaMemcpy (d_data, d_out, next*sizeof(DTYPE), cudaMemcpyDeviceToDevice));
         cudaErrChk (cudaDeviceSynchronize ())
         cudaErrChk (cudaGetLastError() );
+        
         remain = next;
-    }
-
+    } 
 
     cudaErrChk (cudaFree (d_out));
-    return remain;
+ 
 }
 
 
@@ -81,7 +86,7 @@ __global__ void reduction (DTYPE* d_data, ull remain, ull next) {
 
 
 /*** Host program ***/
-ull run_kernel_basic (DTYPE* d_data, const ull num_data) {
+void run_kernel_basic (DTYPE* d_data, const ull num_data) {
 
     ull remain=num_data, next=0;
     while (remain > 1) {
@@ -97,8 +102,6 @@ ull run_kernel_basic (DTYPE* d_data, const ull num_data) {
         cudaErrChk (cudaGetLastError() );
         remain = next;
     }
-
-    return remain;
 }
 
 
@@ -112,7 +115,7 @@ ull run_kernel_basic (DTYPE* d_data, const ull num_data) {
 DTYPE initial_data (DTYPE* data, const ull num_data) {
     DTYPE sum = 0;
     for (ull i=0; i<num_data; i++) {
-        data[i] = rand()%5-2;
+        data[i] = rand()%5;
         sum += data[i];
     }
     return sum;
@@ -122,7 +125,7 @@ DTYPE initial_data (DTYPE* data, const ull num_data) {
 int main (int argc, char** argv) {
 
     /*** Program Configuration ***/
-    const ull num_data = 5*1e+8;
+    const ull num_data = 4*1e+8;
     const size_t size_data = sizeof (ull) * num_data;
     printf("\n\n=======================================================================\n");
     printf("== Parallel integer reduction\n");
@@ -141,17 +144,18 @@ int main (int argc, char** argv) {
     DTYPE* d_data;
     cudaErrChk (cudaMalloc ((void**)&d_data, size_data));
     cudaErrChk (cudaMemcpy (d_data, data, size_data, cudaMemcpyHostToDevice));
-    cudaErrChk (cudaDeviceSynchronize ())
+    cudaErrChk (cudaDeviceSynchronize ());
 
     /*** Run kernel ***/
-    run_kernel_basic (d_data, num_data);
+//    run_kernel_basic (d_data, num_data);
+    run_kernel_blocked (d_data, num_data);
 
     /*** Check result ***/
     DTYPE result;
     cudaErrChk (cudaMemcpy (&result, d_data, sizeof (DTYPE), cudaMemcpyDeviceToHost));
-    
+
     printf("Check result ...\n");
-    if (sum != result[0]) {
+    if (sum != result) {
         printf("Err GT(%llu) != Pred(%llu)\n", sum, result);
     } else {
         printf("Pass GT(%llu) == Pred(%llu)\n", sum, result);
