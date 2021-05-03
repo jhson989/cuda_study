@@ -4,18 +4,18 @@
 
 
 
-=======================================================================  
-== Parallel DTYPE reduction  
-=======================================================================  
-Kernel mode : 0.Basic reduction  
-Number of DTYPE : 400000000  
-    size of mem : 3.20 GB  
-    Total number of floating point multiplications : 1.60 Gops  
-    Elaped time: 97.2505 msec  
-    GFLOPS : 16.4524 gflops [Avg. of 4 time(s)]  
-Check result ...  
-    [Pass] GT(800057209) == Pred(800057209)  
-=======================================================================  
+  =======================================================================  
+  == Parallel DTYPE reduction  
+  =======================================================================  
+  Kernel mode : 0.Basic reduction  
+  Number of DTYPE : 400000000  
+      size of mem : 3.20 GB  
+      Total number of floating point multiplications : 1.60 Gops  
+      Elaped time: 97.2505 msec  
+      GFLOPS : 16.4524 gflops [Avg. of 4 time(s)]  
+  Check result ...  
+      [Pass] GT(800057209) == Pred(800057209)  
+  =======================================================================  
   
    
    
