@@ -18,6 +18,73 @@ inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=
 
 
 /****************************************************************
+  *** Kernel mode : 3
+  *** Blocked shared half reduction
+  ****************************************************************/
+
+/*** Kernel program ***/
+__global__ void reduction_blocked_shared_half (DTYPE* d_data, DTYPE* d_out, ull remain) {
+    ull tidx = threadIdx.x;
+    ull idx = blockIdx.x * (2*blockDim.x) + threadIdx.x;
+    extern __shared__ DTYPE smem[];
+
+    if (idx < remain) {
+        if (idx+blockDim.x<remain)
+            smem[tidx] = d_data[idx]+d_data[idx+blockDim.x];
+        else
+            smem[tidx] = d_data[idx];
+    }
+    __syncthreads();
+
+    for (ull s=blockDim.x/2; s>0; s>>=1) {
+        if (tidx<s && idx+s<remain) {
+            smem[tidx]+=smem[tidx+s];
+        }
+        __syncthreads();
+    }
+    
+    if (tidx == 0) {
+        d_out[blockIdx.x] = smem[tidx];
+    }
+}
+
+
+
+/*** Host program ***/
+void run_kernel_blocked_shared_half (DTYPE* d_data, const ull num_data) {
+
+    DTYPE* d_out;
+    cudaErrChk (cudaMalloc ((void**)&d_out, sizeof(DTYPE)*num_data));
+    ull remain=num_data, next=0;
+
+    dim3 threads (128);
+    const size_t size_smem = sizeof (DTYPE) * threads.x;
+    while (remain > 1) {
+        if (remain%threads.x==0)
+            next = remain/(2*threads.x);
+        else
+            next = remain/(2*threads.x)+1;
+
+
+        dim3 blocks ((remain+(2*threads.x)-1)/(2*threads.x));
+        reduction_blocked_shared_half<<<blocks, threads, size_smem>>> (d_data, d_out, remain);
+        cudaErrChk (cudaMemcpy (d_data, d_out, next*sizeof(DTYPE), cudaMemcpyDeviceToDevice));
+        cudaErrChk (cudaDeviceSynchronize ())
+        cudaErrChk (cudaGetLastError() );
+        
+        remain = next;
+    } 
+
+    cudaErrChk (cudaFree (d_out));
+ 
+}
+
+
+
+
+
+
+/****************************************************************
   *** Kernel mode : 2
   *** Blocked shared reduction
   ****************************************************************/
@@ -54,7 +121,7 @@ void run_kernel_blocked_shared (DTYPE* d_data, const ull num_data) {
     cudaErrChk (cudaMalloc ((void**)&d_out, sizeof(DTYPE)*num_data));
     ull remain=num_data, next=0;
 
-    dim3 threads (256);
+    dim3 threads (128);
     const size_t size_smem = sizeof (DTYPE) * threads.x;
     while (remain > 1) {
         if (remain%threads.x==0)
@@ -109,7 +176,7 @@ void run_kernel_blocked (DTYPE* d_data, const ull num_data) {
     cudaErrChk (cudaMalloc ((void**)&d_out, sizeof(DTYPE)*num_data));
     ull remain=num_data, next=0;
 
-    dim3 threads (256);
+    dim3 threads (128);
     while (remain > 1) {
         if (remain%threads.x==0)
             next = remain/threads.x;
@@ -152,13 +219,14 @@ __global__ void reduction (DTYPE* d_data, ull remain, ull next) {
 void run_kernel_basic (DTYPE* d_data, const ull num_data) {
 
     ull remain=num_data, next=0;
+    dim3 threads (128);
+
     while (remain > 1) {
         if (remain%2==0)
             next = remain/2;
         else
             next = remain/2 +1;
 
-        dim3 threads (256);
         dim3 blocks ((next+threads.x-1)/threads.x);
         reduction<<<blocks, threads>>> (d_data, remain, next);
         cudaErrChk (cudaDeviceSynchronize ())
@@ -200,6 +268,10 @@ int select_mode(const int argc, const char** argv) {
         case 2:
             printf("Kernel mode : 2.Blocked shared reduction\n");
             break;
+        case 3:
+            printf("Kernel mode : 3.Blocked shared half reduction\n");
+            break;
+
         default:
             printf("Selected not implemented mode...\n");
             exit(1);
@@ -254,6 +326,9 @@ int main (const int argc, const char** argv) {
                 break;
             case 2:
                 run_kernel_blocked_shared (d_data, num_data);
+                break;
+            case 3:
+                run_kernel_blocked_shared_half (d_data, num_data);
                 break;
             default:
                 printf("Not implemented\n");
