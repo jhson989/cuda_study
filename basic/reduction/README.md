@@ -12,7 +12,7 @@
     Kernel mode : 0.Basic reduction  
     Number of DTYPE : 400000000  
         size of mem : 3.20 GB  
-        Total number of floating point multiplications : 1.60 Gops  
+        Total number of add inst. : 1.60 Gops  
         Elaped time: 97.2104 msec  
         GFLOPS : 16.4591 gflops [Avg. of 4 time(s)]  
     Check result ...  
