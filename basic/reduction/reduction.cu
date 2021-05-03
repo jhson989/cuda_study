@@ -18,6 +18,76 @@ inline void cudaAssert(cudaError_t code, const char *file, int line, bool abort=
 
 
 /****************************************************************
+  *** Kernel mode : 4
+  *** Blocked shared half unrolled reduction
+  ****************************************************************/
+
+/*** Kernel program ***/
+template <size_t blockSize>
+__global__ void reduction_blocked_shared_half_unrolled (DTYPE* d_data, DTYPE* d_out, ull remain) {
+    ull tidx = threadIdx.x;
+    ull idx = blockIdx.x * (2*blockSize) + threadIdx.x;
+    extern __shared__ DTYPE smem[];
+
+    if (idx < remain) {
+        if (idx+blockSize<remain)
+            smem[tidx] = d_data[idx]+d_data[idx+blockSize];
+        else
+            smem[tidx] = d_data[idx];
+    }
+    __syncthreads();
+
+    #pragma unroll
+    for (ull s=blockSize>>1; s>0; s>>=1) {
+        if (tidx<s && idx+s<remain) {
+            smem[tidx]+=smem[tidx+s];
+        }
+        __syncthreads();
+    }
+
+
+    if (tidx == 0) {
+        d_out[blockIdx.x] = smem[tidx];
+    }
+}
+
+
+
+/*** Host program ***/
+void run_kernel_blocked_shared_half_unrolled (DTYPE* d_data, const ull num_data) {
+
+    DTYPE* d_out;
+    cudaErrChk (cudaMalloc ((void**)&d_out, sizeof(DTYPE)*num_data));
+    ull remain=num_data, next=0;
+
+    dim3 threads (128);
+    const size_t size_smem = sizeof (DTYPE) * threads.x;
+    while (remain > 1) {
+        if (remain%threads.x==0)
+            next = remain/(2*threads.x);
+        else
+            next = remain/(2*threads.x)+1;
+
+
+        dim3 blocks ((remain+(2*threads.x)-1)/(2*threads.x));
+        reduction_blocked_shared_half_unrolled<128><<<blocks, threads, size_smem>>> (d_data, d_out, remain);
+        cudaErrChk (cudaMemcpy (d_data, d_out, next*sizeof(DTYPE), cudaMemcpyDeviceToDevice));
+        cudaErrChk (cudaDeviceSynchronize ())
+        cudaErrChk (cudaGetLastError() );
+        
+        remain = next;
+    } 
+
+    cudaErrChk (cudaFree (d_out));
+ 
+}
+
+
+
+
+
+
+/****************************************************************
   *** Kernel mode : 3
   *** Blocked shared half reduction
   ****************************************************************/
@@ -36,7 +106,7 @@ __global__ void reduction_blocked_shared_half (DTYPE* d_data, DTYPE* d_out, ull 
     }
     __syncthreads();
 
-    for (ull s=blockDim.x/2; s>0; s>>=1) {
+    for (ull s=blockDim.x>>1; s>0; s>>=1) {
         if (tidx<s && idx+s<remain) {
             smem[tidx]+=smem[tidx+s];
         }
@@ -100,7 +170,7 @@ __global__ void reduction_blocked_shared (DTYPE* d_data, DTYPE* d_out, ull remai
     }
     __syncthreads();
 
-    for (ull s=blockDim.x/2; s>0; s>>=1) {
+    for (ull s=blockDim.x>>1; s>0; s>>=1) {
         if (tidx<s && idx+s<remain) {
             smem[tidx]+=smem[tidx+s];
         }
@@ -156,7 +226,7 @@ __global__ void reduction_blocked (DTYPE* d_data, DTYPE* d_out, ull remain) {
     ull tidx = threadIdx.x;
     ull idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for (ull s=blockDim.x/2; s>0; s>>=1) {
+    for (ull s=blockDim.x>>1; s>0; s>>=1) {
         if (tidx<s && idx+s < remain) {
             d_data[idx]+=d_data[idx+s];
         }
@@ -271,6 +341,10 @@ int select_mode(const int argc, const char** argv) {
         case 3:
             printf("Kernel mode : 3.Blocked shared half reduction\n");
             break;
+        case 4:
+            printf("Kernel mode : 4.Blocked shared half unrolled reduction\n");
+            break;
+
 
         default:
             printf("Selected not implemented mode...\n");
@@ -330,6 +404,9 @@ int main (const int argc, const char** argv) {
             case 3:
                 run_kernel_blocked_shared_half (d_data, num_data);
                 break;
+            case 4:
+                run_kernel_blocked_shared_half_unrolled (d_data, num_data);
+                break;
             default:
                 printf("Not implemented\n");
                 exit(1);
@@ -345,7 +422,7 @@ int main (const int argc, const char** argv) {
     DTYPE result;
     cudaErrChk (cudaMemcpy (&result, d_data, sizeof (DTYPE), cudaMemcpyDeviceToHost));
 
-    printf("    Total number of floating point multiplications : %.2f Gops\n", gops);
+    printf("    Total number of add inst. : %.2f Gops\n", gops);
     printf("    Elaped time: %.4f msec\n", msec_total);
     printf("    GFLOPS : %.4f gflops [Avg. of %d time(s)]\n", gops/(msec_total*1e-3), loop_exe); 
 
