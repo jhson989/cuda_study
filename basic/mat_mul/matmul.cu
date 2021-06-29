@@ -69,9 +69,9 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
     float gops = 1.0*len*len*len*1e-9*loop_exe;
     float msec_total = 0.0f;
     cudaEvent_t start, stop;
-    cudaErrChk(cudaEventCreate(&start));
-    cudaErrChk(cudaEventCreate(&stop));
-    cudaErrChk(cudaEventRecord(start, NULL));
+    cudaErrChk (cudaEventCreate(&start));
+    cudaErrChk (cudaEventCreate(&stop));
+    cudaErrChk (cudaEventRecord(start, NULL));
     // Main body
     for (int i=0; i<loop_exe; i++) {
         matmul_basic<<<dim_blocks, dim_threads>>>(d_A, d_B, d_C, len);
@@ -79,9 +79,9 @@ void matmul_cuda_basic (const float *A, const float *B, float *C, const int len)
         cudaErrChk( cudaGetLastError() );
     }
     // End of main body
-    cudaErrChk(cudaEventRecord(stop, NULL));
-    cudaErrChk(cudaEventSynchronize(stop));
-    cudaErrChk(cudaEventElapsedTime(&msec_total, start, stop));
+    cudaErrChk (cudaEventRecord(stop, NULL));
+    cudaErrChk (cudaEventSynchronize(stop));
+    cudaErrChk (cudaEventElapsedTime(&msec_total, start, stop));
 
 
     printf("    Total number of floating point multiplications : %.2f Gops\n", gops);
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
     printf("    A * B = C\n");
     printf("    arg : ./matmul [len] [Test:0,1] [loop_exe]\n");
     printf("============================================\n\n");
-    int len = (int)1e+3;
+    int len = (int)1e+4;
     if (argc >= 2) 
         len = atoi(argv[1]);
     if (argc >= 4) 

@@ -1,8 +1,9 @@
+ 
 CC = /usr/local/cuda/bin/nvcc
-PROGS = conv_forward
+PROGS = forward
 OBJS =
 INC =
-COMPILE_OPT = -lcublas -O3
+COMPILE_OPT = -lcublas -O3 -lcudnn
 
 all: ${PROGS}
 
@@ -12,5 +13,3 @@ all: ${PROGS}
 
 clean :
 	rm ${PROGS}
-
-
